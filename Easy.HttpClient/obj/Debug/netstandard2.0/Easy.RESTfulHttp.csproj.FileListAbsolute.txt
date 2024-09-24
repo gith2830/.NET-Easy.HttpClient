@@ -1,0 +1,10 @@
+D:\project\c#\netcore\Console\Easy.RESTfulHttp\Easy.RESTfulHttp\bin\Debug\netstandard2.0\Easy.RESTfulHttp.deps.json
+D:\project\c#\netcore\Console\Easy.RESTfulHttp\Easy.RESTfulHttp\bin\Debug\netstandard2.0\Easy.RESTfulHttp.dll
+D:\project\c#\netcore\Console\Easy.RESTfulHttp\Easy.RESTfulHttp\bin\Debug\netstandard2.0\Easy.RESTfulHttp.pdb
+D:\project\c#\netcore\Console\Easy.RESTfulHttp\Easy.RESTfulHttp\obj\Debug\netstandard2.0\Easy.RESTfulHttp.csproj.AssemblyReference.cache
+D:\project\c#\netcore\Console\Easy.RESTfulHttp\Easy.RESTfulHttp\obj\Debug\netstandard2.0\Easy.RESTfulHttp.GeneratedMSBuildEditorConfig.editorconfig
+D:\project\c#\netcore\Console\Easy.RESTfulHttp\Easy.RESTfulHttp\obj\Debug\netstandard2.0\Easy.RESTfulHttp.AssemblyInfoInputs.cache
+D:\project\c#\netcore\Console\Easy.RESTfulHttp\Easy.RESTfulHttp\obj\Debug\netstandard2.0\Easy.RESTfulHttp.AssemblyInfo.cs
+D:\project\c#\netcore\Console\Easy.RESTfulHttp\Easy.RESTfulHttp\obj\Debug\netstandard2.0\Easy.RESTfulHttp.csproj.CoreCompileInputs.cache
+D:\project\c#\netcore\Console\Easy.RESTfulHttp\Easy.RESTfulHttp\obj\Debug\netstandard2.0\Easy.RESTfulHttp.dll
+D:\project\c#\netcore\Console\Easy.RESTfulHttp\Easy.RESTfulHttp\obj\Debug\netstandard2.0\Easy.RESTfulHttp.pdb

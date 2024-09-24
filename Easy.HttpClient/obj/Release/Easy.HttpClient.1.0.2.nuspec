@@ -1,0 +1,20 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2012/06/nuspec.xsd">
+  <metadata>
+    <id>Easy.HttpClient</id>
+    <version>1.0.2</version>
+    <authors>Mo2830</authors>
+    <readme>readme.md</readme>
+    <description>This project uses Source Generator to generate RESTful interface calling code based on tag characteristics.</description>
+    <repository type="git" />
+    <dependencies>
+      <group targetFramework=".NETStandard2.0">
+        <dependency id="Newtonsoft.Json" version="13.0.3" exclude="Build,Analyzers" />
+      </group>
+    </dependencies>
+  </metadata>
+  <files>
+    <file src="D:\project\c#\netcore\Console\Easy.HttpClient\Easy.HttpClient\bin\Release\netstandard2.0\Easy.HttpClient.dll" target="lib\netstandard2.0\Easy.HttpClient.dll" />
+    <file src="D:\project\c#\netcore\Console\Easy.HttpClient\Easy.HttpClient\docs\readme.md" target="\readme.md" />
+  </files>
+</package>
