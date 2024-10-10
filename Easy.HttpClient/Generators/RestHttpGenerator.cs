@@ -30,10 +30,12 @@ namespace Easy.HttpClient.Generators
             for(int i = 0;i<args.Length-1;++i)
             {
                 var item = args[i];
-                builder.Append($"{item.Type.Name} {item.Name},");
+                //builder.Append($"{item.ToDisplayString()} {item.Name},");
+                builder.Append($"{item.ToDisplayString()},");
             }
             var last = args[args.Length-1];
-            builder.Append($"{last.Type.Name} {last.Name}");
+            //builder.Append($"{last.ToDisplayString()} {last.Name}");
+            builder.Append($"{last.ToDisplayString()}");
             return builder.ToString();
         }
         private ParamAttribute FindParamAttr(IEnumerable<AttributeData> attributeDatas)
@@ -396,7 +398,8 @@ namespace Easy.HttpClient.Generators
                 GenerateClassMethod(builder,methodSymbol, httpAttr, httpClientAttr);
             }
         }
-        private void GenerateClassHeader(StringBuilder builder,string namespaceStr,string interfaceName)
+
+        private void GenerateNamespace(StringBuilder builder)
         {
             builder.AppendLine("using System;");
             builder.AppendLine("using System.Threading;");
@@ -404,6 +407,10 @@ namespace Easy.HttpClient.Generators
             builder.AppendLine("using System.Net.Http;");
             builder.AppendLine("using System.Dynamic;");
             builder.AppendLine("using System.Text;");
+        }
+
+        private void GenerateClassHeader(StringBuilder builder,string namespaceStr,string interfaceName)
+        {
             builder.AppendLine($"namespace {namespaceStr}");
             builder.AppendLine("{");
             builder.AppendLine($"   public class {interfaceName}Impl : {interfaceName}");
@@ -431,6 +438,7 @@ namespace Easy.HttpClient.Generators
                 var attrData = attrDatas.FirstOrDefault(x => x.AttributeClass.Name == attrName);
                 var httpClientAttr = Map2Type<HttpClientAttribute>(attrData);
                 StringBuilder builder = new StringBuilder();
+                GenerateNamespace(builder);
                 GenerateClassHeader(builder, namespaceStr, interfaceName);
                 ForEachMethod(builder,context, interfaceDeclaration, attrName, httpClientAttr);
                 GenerateClassFooter(builder);
@@ -440,8 +448,40 @@ namespace Easy.HttpClient.Generators
             return interfaceDict;
         }
 
+        private string GetMainModuleName(GeneratorExecutionContext context)
+        {
+            var compilation = context.Compilation;
+            string namespaceName = null;
+            try
+            {
+                // 尝试找到入口点程序集的符号
+                CancellationToken cancellationToken = context.CancellationToken;
+                var entryAssemblySymbol = compilation.GetEntryPoint(cancellationToken).ContainingAssembly;
+                if (entryAssemblySymbol != null)
+                {
+                    // 获取主模块
+                    var mainModule = entryAssemblySymbol.Modules.FirstOrDefault();
+                    if (mainModule != null)
+                    {
+                        var members = mainModule.ContainingSymbol;
+                        namespaceName = members.Name;
+                    }
+                }
+                var names = namespaceName.Split('.');
+                names = names.Select(x => x[0].ToString().ToUpper() + x.Substring(1)).ToArray();
+                namespaceName = string.Join("", names);
+            }catch(Exception ex)
+            {
+                namespaceName = null;
+            }
+            return namespaceName;
+        }
         private void GenerateInjectionExtensions(GeneratorExecutionContext context, Dictionary<string, string> interfaceDict)
         {
+            if (interfaceDict == null || interfaceDict.Count == 0)
+            {
+                return;
+            }
             string className = "EasyHttpClientInjectionExtensions";
             StringBuilder fileBuilder = new StringBuilder();
             StringBuilder injectBuilder = new StringBuilder();
@@ -461,18 +501,28 @@ namespace Easy.HttpClient.Generators
             {
                 fileBuilder.AppendLine($"using {item};");
             }
+            //获取主程序名称
+            var mainModuleName = GetMainModuleName(context);
             fileBuilder.AppendLine($"namespace Easy.HttpClient.Extensions");
             fileBuilder.AppendLine("{");
             fileBuilder.AppendLine($"    public static class {className}");
             fileBuilder.AppendLine($"    {{");
+            //添加通用方法，用于单个项目
             fileBuilder.AppendLine($"        public static void AddEasyHttpClient(this IServiceCollection services)");
             fileBuilder.AppendLine($"        {{");
             fileBuilder.Append(injectBuilder.ToString());
             fileBuilder.AppendLine($"        }}");
+            //添加多项目使用方法
+            if (mainModuleName!=null)
+            {
+                fileBuilder.AppendLine($"        public static void AddEasyHttpClientBy{mainModuleName}(this IServiceCollection services)");
+                fileBuilder.AppendLine($"        {{");
+                fileBuilder.Append(injectBuilder.ToString());
+                fileBuilder.AppendLine($"        }}");
+            }
             fileBuilder.AppendLine($"    }}");
             fileBuilder.AppendLine("}");
             context.AddSource($"{className}.g.cs", fileBuilder.ToString());
-            //Console.WriteLine($"{className}.g.cs");
         }
         public void Execute(GeneratorExecutionContext context)
         {

@@ -5,7 +5,7 @@
     <TargetFramework>netstandard2.0</TargetFramework>
     <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
     <LangVersion>latest</LangVersion>
-    <Version>1.0.3</Version>
+    <Version>1.0.4</Version>
     <Description>This project uses Source Generator to generate RESTful interface calling code based on tag characteristics.</Description>
     <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
