@@ -6,7 +6,7 @@ namespace Easy.HttpClient.Attributes.Params
 {
     public class HeaderAttribute : ParamAttribute
     {
-        public HeaderAttribute(string name = null) : base(ParamType.Header, name)
+        public HeaderAttribute(string name = null, bool isBoxing = false) : base(ParamType.Header, name, isBoxing)
         {
         }
     }

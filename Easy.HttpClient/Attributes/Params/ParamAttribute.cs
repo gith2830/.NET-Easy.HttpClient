@@ -9,10 +9,12 @@ namespace Easy.HttpClient.Attributes.Params
     {
         public ParamType ParamType { get; set; }
         public string Name { get; set; }
-        public ParamAttribute(ParamType paramType,string name)
+        public bool IsBoxing { get; set; }
+        public ParamAttribute(ParamType paramType,string name,bool isBoxing)
         {
             ParamType = paramType;
             Name = name;
+            IsBoxing = isBoxing;
         }
     }
 }

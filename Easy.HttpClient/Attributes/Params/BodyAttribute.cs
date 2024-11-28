@@ -6,7 +6,7 @@ namespace Easy.HttpClient.Attributes.Params
 {
     public class BodyAttribute : ParamAttribute
     {
-        public BodyAttribute(string name = null) : base(ParamType.Body, name)
+        public BodyAttribute(string name = null, bool isBoxing = false) : base(ParamType.Body, name, isBoxing)
         {
         }
     }

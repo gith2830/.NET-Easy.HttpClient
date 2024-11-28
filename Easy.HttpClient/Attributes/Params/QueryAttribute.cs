@@ -6,7 +6,7 @@ namespace Easy.HttpClient.Attributes.Params
 {
     public class QueryAttribute : ParamAttribute
     {
-        public QueryAttribute(string name = null) : base(ParamType.Query, name)
+        public QueryAttribute(string name = null, bool isBoxing = false) : base(ParamType.Query, name, isBoxing)
         {
         }
     }

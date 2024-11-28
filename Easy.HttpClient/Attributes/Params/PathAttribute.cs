@@ -6,7 +6,7 @@ namespace Easy.HttpClient.Attributes.Params
 {
     public class PathAttribute : ParamAttribute
     {
-        public PathAttribute(string name= null) : base(ParamType.Path, name)
+        public PathAttribute(string name= null, bool isBoxing = false) : base(ParamType.Path, name, isBoxing)
         {
         }
     }
