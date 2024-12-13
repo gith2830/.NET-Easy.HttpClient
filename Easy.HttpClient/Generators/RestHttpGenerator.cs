@@ -1,20 +1,14 @@
 ﻿using Easy.HttpClient.Attributes;
 using Easy.HttpClient.Attributes.Params;
 using Easy.HttpClient.Receivers;
-using Easy.HttpClient.Utils;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Microsoft.CodeAnalysis.Operations;
-using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Diagnostics;
-using System.Dynamic;
 using System.Linq;
-using System.Net.Http;
-using System.Reflection.Metadata;
 using System.Text;
 using System.Threading;
 
@@ -29,21 +23,21 @@ namespace Easy.HttpClient.Generators
         private string ConvertParamsStr(ImmutableArray<IParameterSymbol> args)
         {
             StringBuilder builder = new StringBuilder();
-            for(int i = 0;i<args.Length-1;++i)
+            for (int i = 0; i < args.Length - 1; ++i)
             {
                 var item = args[i];
                 //builder.Append($"{item.ToDisplayString()} {item.Name},");
                 builder.Append($"{item.ToDisplayString()},");
             }
-            var last = args[args.Length-1];
+            var last = args[args.Length - 1];
             //builder.Append($"{last.ToDisplayString()} {last.Name}");
             builder.Append($"{last.ToDisplayString()}");
             return builder.ToString();
         }
         private ParamAttribute FindParamAttr(IEnumerable<AttributeData> attributeDatas)
         {
-            var formAttr = attributeDatas.FirstOrDefault(x=>x.AttributeClass.Name == typeof(FormAttribute).Name);
-            if(formAttr != null)
+            var formAttr = attributeDatas.FirstOrDefault(x => x.AttributeClass.Name == typeof(FormAttribute).Name);
+            if (formAttr != null)
             {
                 return Map2Type<FormAttribute>(formAttr);
             }
@@ -71,11 +65,11 @@ namespace Easy.HttpClient.Generators
         }
         public ParamAttribute GetForGetMethodAttr(ParamAttribute paramAttr)
         {
-            if(paramAttr == null)
+            if (paramAttr == null)
             {
                 return new QueryAttribute(null);
             }
-            switch(paramAttr.ParamType)
+            switch (paramAttr.ParamType)
             {
                 case ParamType.Query:
                 case ParamType.Path:
@@ -116,7 +110,7 @@ namespace Easy.HttpClient.Generators
             }
             return paramAttr;
         }
-        private string GetSendByHttpMethod(string httpMethod,string dataName, bool canCancel)
+        private string GetSendByHttpMethod(string httpMethod, string dataName, bool canCancel)
         {
             StringBuilder builder = new StringBuilder($"            var response = httpClient.{httpMethod}Async(url");
             switch (httpMethod)//添加参数
@@ -138,17 +132,17 @@ namespace Easy.HttpClient.Generators
             {
                 builder.Append(").GetAwaiter().GetResult();");
             }
-            
+
             return builder.ToString();
         }
-        private (string code,bool isDict) GenerateSetParamCode(IParameterSymbol arg,bool isBoxing, out string dataArgName)
+        private (string code, bool isDict) GenerateSetParamCode(IParameterSymbol arg, bool isBoxing, out string dataArgName)
         {
             bool isDict = false;
             StringBuilder builder = new StringBuilder();
             List<string> paramVars = new List<string>();
             if (arg.Type.IsReferenceType && arg.Type.Name != "String")
             {
-                if(isBoxing)
+                if (isBoxing)
                 {
                     dataArgName = $"{arg.Name}Json";
                     paramVars.Add(dataArgName);
@@ -158,10 +152,6 @@ namespace Easy.HttpClient.Generators
                 {
                     dataArgName = $"{arg.Name}Dict";
                     builder.AppendLine($"            var {dataArgName} = ObjectUtil.MapToDictory({arg.Name});");
-                    //builder.AppendLine($"            foreach(var item in {dataArgName})");
-                    //builder.AppendLine( "            {");
-                    //builder.AppendLine($"                {dataArgName}.Add(item.Key,item.Value);");
-                    //builder.AppendLine( "            }");
                     isDict = true;
                 }
             }
@@ -171,11 +161,11 @@ namespace Easy.HttpClient.Generators
                 paramVars.Add(dataArgName);
                 builder.AppendLine($"            var {dataArgName} = {arg.Name}.ToString();");
             }
-            return (builder.ToString(),isDict);
+            return (builder.ToString(), isDict);
         }
         private string GetMethodParamName(IParameterSymbol arg, ParamAttribute paramAttribute)
         {
-            if(paramAttribute == null || string.IsNullOrEmpty(paramAttribute.Name))
+            if (paramAttribute == null || string.IsNullOrEmpty(paramAttribute.Name))
             {
                 return arg.Name;
             }
@@ -215,8 +205,19 @@ namespace Easy.HttpClient.Generators
             {
                 builder.AppendLine($"            foreach(var item in {dataArgName})");
                 builder.AppendLine($"            {{");
-                builder.AppendLine($"                {dictName}.Add(item.Key, item.Value);");
+                if (paramAttribute.ParamType == ParamType.Form)
+                {
+                    builder.AppendLine($"               {dictName}.Add(item.Key, item.Value);");
+                }
+                else
+                {
+                    builder.AppendLine($"               {dictName}.Add(item.Key, item.Value);");
+                }
                 builder.AppendLine($"            }}");
+            }
+            else if (paramAttribute.ParamType == ParamType.Path)
+            {
+                builder.AppendLine($"            {dictName}.Add(\"{paramName}\",{dataArgName});");
             }
             else
             {
@@ -224,57 +225,105 @@ namespace Easy.HttpClient.Generators
             }
         }
 
-        private void GenerateAddParamDict(StringBuilder builder, Dictionary<string, bool> methodHasTypeDict,out string? sendParamName)
+        private void GenerateAddParamDict(StringBuilder builder, Dictionary<string, bool> methodHasTypeDict, out string? sendParamName)
         {
             sendParamName = null;
             if ((methodHasTypeDict["formDict"] && methodHasTypeDict["bodyDict"]) || methodHasTypeDict["formDict"])
             {
-                builder.AppendLine("            var formDataList = new List<KeyValuePair<string, string>>();");
+                builder.AppendLine("            var formData = new MultipartFormDataContent();");
                 builder.AppendLine("            foreach(var item in formDict)");
                 builder.AppendLine("            {");
-                builder.AppendLine("                formDataList.Add(new KeyValuePair<string, string>(item.Key, item.Value));");
+                builder.AppendLine("                var val = item.Value;");
+                builder.AppendLine("                if(val is IFormFile)");
+                builder.AppendLine("                {");
+                builder.AppendLine("                    var formFile = val as IFormFile;");
+                builder.AppendLine("                    using (var memoryStream = new MemoryStream())");
+                builder.AppendLine("                    {");
+                builder.AppendLine("                        formFile.CopyTo(memoryStream);");
+                builder.AppendLine("                        var buffer = memoryStream.ToArray();");
+                builder.AppendLine("                        var fileContent = new ByteArrayContent(buffer);");
+                builder.AppendLine("                        fileContent.Headers.ContentType = new MediaTypeHeaderValue(\"multipart/form-data\");");
+                builder.AppendLine("                        formData.Add(fileContent,\"file\", formFile.FileName);");
+                builder.AppendLine("                    }");
+                builder.AppendLine("                }");
+                builder.AppendLine("                else if(val is String)");
+                builder.AppendLine("                {");
+                builder.AppendLine("                    var stringContent = new StringContent((string)item.Value);");
+                builder.AppendLine("                    formData.Add(stringContent, item.Key);");
+                builder.AppendLine("                }");
+                builder.AppendLine("                else");
+                builder.AppendLine("                {");
+                builder.AppendLine("                    var stringContent = new StringContent(JsonConvert.SerializeObject(item.Value));");
+                builder.AppendLine("                    formData.Add(stringContent, item.Key);");
+                builder.AppendLine("                }");
                 builder.AppendLine("            }");
-                builder.AppendLine("            var formDataContent = new FormUrlEncodedContent(formDataList);");
-                sendParamName = "formDataContent";
-            } 
+                sendParamName = "formData";
+            }
             else if (methodHasTypeDict["bodyDict"])
             {
-                //builder.AppendLine("            dynamic data = new ExpandoObject();");
-                //builder.AppendLine("            foreach(var item in bodyDict)");
-                //builder.AppendLine("            {");
-                //builder.AppendLine("                data[item.Key] = item.Value;");
-                //builder.AppendLine("            }");
                 builder.AppendLine("            var json = JsonConvert.SerializeObject(bodyDict);");
                 builder.AppendLine("            using StringContent stringContent = new StringContent(json,Encoding.UTF8,\"application/json\");");
                 sendParamName = "stringContent";
             }
             if (methodHasTypeDict["queryDict"])
             {
-                builder.AppendLine("            string queryParams = \"\";");
-                builder.AppendLine("            foreach(var item in queryDict)");
-                builder.AppendLine("            {");
-                builder.AppendLine("                queryParams += \"{paramName}={{{dataArgName}}}&\";");
-                builder.AppendLine("            }");
-                builder.AppendLine("            url = $\"{{url}}?{{queryParams}}\";");
+                builder.AppendLine("            var queryDictForStr = queryDict.ToDictionary(x => x.Key, x => {");
+                builder.AppendLine("                var val = x.Value;");
+                builder.AppendLine("                if(val is String || val is Guid)");
+                builder.AppendLine("                {");
+                builder.AppendLine("                    return val.ToString();");
+                builder.AppendLine("                }");
+                builder.AppendLine("                else");
+                builder.AppendLine("                {");
+                builder.AppendLine("                    var json = JsonConvert.SerializeObject(x.Value).ToString();");
+                builder.AppendLine("                    return json;");
+                builder.AppendLine("                }");
+                builder.AppendLine("            });");
+                builder.AppendLine("            url = QueryHelpers.AddQueryString(url, queryDictForStr);");
             }
             if (methodHasTypeDict["pathDict"])
             {
-                builder.AppendLine("            foreach(var item in pathDict)");
+                builder.AppendLine("            var pathDictForStr = pathDict.ToDictionary(x => x.Key, x => {");
+                builder.AppendLine("                var val = x.Value;");
+                builder.AppendLine("                if(val is String || val is Guid)");
+                builder.AppendLine("                {");
+                builder.AppendLine("                    var valStr = WebUtility.UrlEncode(val.ToString());");
+                builder.AppendLine("                    return valStr.ToString();");
+                builder.AppendLine("                }");
+                builder.AppendLine("                else");
+                builder.AppendLine("                {");
+                builder.AppendLine("                    var json = JsonConvert.SerializeObject(x.Value);");
+                builder.AppendLine("                    json = WebUtility.UrlEncode(json);");
+                builder.AppendLine("                    return json;");
+                builder.AppendLine("                }");
+                builder.AppendLine("            });");
+                builder.AppendLine("            foreach(var item in pathDictForStr)");
                 builder.AppendLine("            {");
-                builder.AppendLine("                url = url.Replace(item.Key,item.Value);");
+                builder.AppendLine("                url = url.Replace($\"{{{item.Key}}}\",item.Value);");
                 builder.AppendLine("            }");
             }
             if (methodHasTypeDict["headerDict"])
             {
-                builder.AppendLine("            string query = \"\";");
-                builder.AppendLine("            foreach(var item in headerDict)");
+                builder.AppendLine("            var headerDictForStr = headerDict.ToDictionary(x => x.Key, x => {");
+                builder.AppendLine("                var val = x.Value;");
+                builder.AppendLine("                if(val is String || val is Guid)");
+                builder.AppendLine("                {");
+                builder.AppendLine("                    return val.ToString();");
+                builder.AppendLine("                }");
+                builder.AppendLine("                else");
+                builder.AppendLine("                {");
+                builder.AppendLine("                    var json = JsonConvert.SerializeObject(x.Value);");
+                builder.AppendLine("                    return json;");
+                builder.AppendLine("                }");
+                builder.AppendLine("            });");
+                builder.AppendLine("            foreach(var item in headerDictForStr)");
                 builder.AppendLine("            {");
                 builder.AppendLine("                httpClient.DefaultRequestHeaders.Add(item.Key, item.Value);");
                 builder.AppendLine("            }");
             }
         }
 
-        private void GenerateAddParameterItemCode(string httpMethod, StringBuilder builder, ImmutableArray<IParameterSymbol> args,out string? sendParamName)
+        private void GenerateAddParameterItemCode(string httpMethod, StringBuilder builder, ImmutableArray<IParameterSymbol> args, out string? sendParamName)
         {
             Dictionary<string, bool> methodHasTypeDict = new Dictionary<string, bool>();
             methodHasTypeDict.Add("formDict", false);
@@ -282,11 +331,11 @@ namespace Easy.HttpClient.Generators
             methodHasTypeDict.Add("bodyDict", false);
             methodHasTypeDict.Add("headerDict", false);
             methodHasTypeDict.Add("pathDict", false);
-            builder.AppendLine("            Dictionary<string, string> formDict = new Dictionary<string, string>();");
-            builder.AppendLine("            Dictionary<string, string> queryDict = new Dictionary<string, string>();");
-            builder.AppendLine("            Dictionary<string, string> bodyDict = new Dictionary<string, string>();");
-            builder.AppendLine("            Dictionary<string, string> headerDict = new Dictionary<string, string>();");
-            builder.AppendLine("            Dictionary<string, string> pathDict = new Dictionary<string, string>();");
+            builder.AppendLine("            Dictionary<string, object> formDict = new Dictionary<string, object>();");
+            builder.AppendLine("            Dictionary<string, object> queryDict = new Dictionary<string, object>();");
+            builder.AppendLine("            Dictionary<string, object> bodyDict = new Dictionary<string, object>();");
+            builder.AppendLine("            Dictionary<string, object> headerDict = new Dictionary<string, object>();");
+            builder.AppendLine("            Dictionary<string, object> pathDict = new Dictionary<string, object>();");
             foreach (var arg in args)
             {
                 var attrs = arg.GetAttributes();
@@ -295,87 +344,20 @@ namespace Easy.HttpClient.Generators
                 //(hasForm, hasBody, hasQuery, hasPath) = GenerateBoxingParameter(builder, arg, paramAttribute, paramName, queryBuilder, pathBuilder, formBuilder);
                 GenerateParamCode(builder, arg, paramAttribute, paramName, methodHasTypeDict);
             }
-            GenerateAddParamDict(builder, methodHasTypeDict,out sendParamName);
+            GenerateAddParamDict(builder, methodHasTypeDict, out sendParamName);
         }
 
-        private string AddSendCode(string httpMethod,string url,ImmutableArray<IParameterSymbol> args, bool canCancel)
+        private string AddSendCode(string httpMethod, string url, ImmutableArray<IParameterSymbol> args, bool canCancel)
         {
             StringBuilder builder = new StringBuilder();
             builder.AppendLine($"            string url = \"{url}\";");
-            //builder.AppendLine("            var formDataContent = new MultipartFormDataContent();");
-            //builder.Append("formDataContent.Add(\"ContentType\", \"multipart/form-data\");");
-            bool hasForm = false;
-            bool hasBody = false;
-            bool hasQuery = false;
-            bool hasPath = false;
-            //StringBuilder queryBuilder = new StringBuilder("            string queryParams = $\"");
-            //StringBuilder pathBuilder = new StringBuilder();
-            //StringBuilder formBuilder = new StringBuilder();
-            //formBuilder.AppendLine("            var formDataList = new List<KeyValuePair<string, string>>();");
-            //foreach (var arg in args)
-            //{
-            //    var attrs = arg.GetAttributes();
-            //    ParamAttribute paramAttribute = FindParamAttrByHttpMethod(httpMethod, attrs);
-            //    string dataArgName;
-            //    string paramName = GetMethodParamName(arg,paramAttribute);
-            //    builder.Append(GenerateSetParamCode(arg, out dataArgName));
-            //    switch (paramAttribute.ParamType)
-            //    {
-            //        case ParamType.Form:
-            //            hasForm = true;
-            //            //builder.AppendLine($"            formDataContent.Add(new StringContent(\"{paramName}\"), {dataArgName}.ToString());");
-            //            formBuilder.AppendLine($"            formDataList.Add(new KeyValuePair<string, string>(\"{paramName}\", {dataArgName}));");
-            //            break;
-            //        case ParamType.Body:
-            //            hasBody = true;
-            //            builder.AppendLine($"            data.{paramName} = {dataArgName};");
-            //            break;
-            //        case ParamType.Query:
-            //            hasQuery = true;
-            //            queryBuilder.Append($"{paramName}={{{dataArgName}}}&");
-            //            break;
-            //        case ParamType.Path:
-            //            hasPath = true;
-            //            pathBuilder.AppendLine($"            url = url.Replace(\"{{{paramName}}}\",{dataArgName});");
-            //            break;
-            //        case ParamType.Header:
-            //            builder.AppendLine($"            httpClient.DefaultRequestHeaders.Add(\"{paramName}\", {dataArgName});");
-            //            break;
-            //    }
-            //}
-            //(hasForm, hasBody, hasQuery, hasPath) = GenerateAddParameterItemCode(httpMethod,builder,args, queryBuilder, pathBuilder, formBuilder);
-            //string sendParamName;
-            //if ( hasForm && hasBody || hasBody)
-            //{
-            //    builder.AppendLine("            var json = JsonConvert.SerializeObject(data);");
-            //    builder.AppendLine("            using StringContent stringContent = new StringContent(json,Encoding.UTF8,\"application/json\");");
-            //    //builder.AppendLine("            stringContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(\"application/json\");");
-            //    sendParamName = "stringContent";
-            //}
-            ////else if (hasForm)
-            //else
-            //{
-            //    formBuilder.AppendLine("            var formDataContent = new FormUrlEncodedContent(formDataList);");
-            //    builder.Append(formBuilder.ToString());
-            //    sendParamName = "formDataContent";
-            //}
-            //if (hasQuery)
-            //{
-            //    queryBuilder.AppendLine("\";");
-            //    builder.Append(queryBuilder.ToString());
-            //    builder.AppendLine($"            url = $\"{{url}}?{{queryParams}}\";");
-            //}
-            //if (hasPath)
-            //{
-            //    builder.Append(pathBuilder.ToString());
-            //}
             string sendParamName;
-            GenerateAddParameterItemCode(httpMethod, builder, args,out sendParamName);
+            GenerateAddParameterItemCode(httpMethod, builder, args, out sendParamName);
             string sendCode = GetSendByHttpMethod(httpMethod, sendParamName, canCancel);
             builder.AppendLine(sendCode);
             return builder.ToString();
         }
-        private void GenerateReturnTypeMethod(StringBuilder builder, string methodName, ImmutableArray<IParameterSymbol> args, HttpMethodAttribute restMehtodAttribute, string url,ITypeSymbol returnTypeSymbol)
+        private void GenerateReturnTypeMethod(StringBuilder builder, string methodName, ImmutableArray<IParameterSymbol> args, HttpMethodAttribute restMehtodAttribute, string url, ITypeSymbol returnTypeSymbol)
         {
             string methodStr = restMehtodAttribute.Method;
             var returnType = returnTypeSymbol.ToDisplayString();
@@ -393,7 +375,7 @@ namespace Easy.HttpClient.Generators
                 builder.AppendLine($"            tokenSource.CancelAfter({restMehtodAttribute.Timeout});");
                 builder.AppendLine($"            CancellationToken _easy_rest_cancel_token_v1_00 = tokenSource.Token;");
             }
-            builder.AppendLine("            using HttpClient httpClient = new HttpClient();");            
+            builder.AppendLine("            using HttpClient httpClient = new HttpClient();");
             if (args.Length > 0)
             {
                 builder.Append(AddSendCode(methodStr, url, args, restMehtodAttribute.CanCancel));
@@ -404,19 +386,24 @@ namespace Easy.HttpClient.Generators
             }
             else
             {
-                builder.AppendLine("            var resultStr = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();");
-                if (returnType != "string")
+                if (returnType == "System.Net.Http.HttpResponseMessage")
                 {
+                    builder.AppendLine($"           return response;");
+                }
+                else if (returnType != "string")
+                {
+                    builder.AppendLine("            var resultStr = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();");
                     builder.AppendLine($"           return JsonConvert.DeserializeObject<{returnType}>(resultStr);");
                 }
                 else
                 {
+                    builder.AppendLine("            var resultStr = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();");
                     builder.AppendLine("            return resultStr;");
                 }
             }
             builder.AppendLine("       }");
         }
-        private string ConcatUrl(string apiUrl,params string[] urls)
+        private string ConcatUrl(string apiUrl, params string[] urls)
         {
             const string httpPrefix = "http://";
             const string httpsPrefix = "https://";
@@ -426,7 +413,7 @@ namespace Easy.HttpClient.Generators
             string urlsStr = string.Join("/", urls);
             if (!isHttp && !isHttps)
             {
-                str = string.Concat(httpPrefix,$"{apiUrl}/", urlsStr).Trim();
+                str = string.Concat(httpPrefix, $"{apiUrl}/", urlsStr).Trim();
                 isHttp = true;
             }
             else
@@ -442,11 +429,11 @@ namespace Easy.HttpClient.Generators
             {
                 prefixStr = str.Substring(0, httpsPrefix.Length);
             }
-            
-            string afterUrl = str.Substring(httpsPrefix.Length-1).Replace("//","/");
+
+            string afterUrl = str.Substring(httpsPrefix.Length).Replace("//", "/");
             return string.Concat(prefixStr, afterUrl);
         }
-        private void GenerateClassMethod(StringBuilder builder,IMethodSymbol methodSymbol,HttpMethodAttribute restMehtodAttribute, HttpClientAttribute httpClientAttr)
+        private void GenerateClassMethod(StringBuilder builder, IMethodSymbol methodSymbol, HttpMethodAttribute restMehtodAttribute, HttpClientAttribute httpClientAttr)
         {
             var returnTypeSymbol = methodSymbol.ReturnType;
             string methodNameStr = methodSymbol.Name;
@@ -518,22 +505,22 @@ namespace Easy.HttpClient.Generators
             }
             return null;
         }
-        private void ForEachMethod(StringBuilder builder,GeneratorExecutionContext context, InterfaceDeclarationSyntax interfaceDeclaration, string attrName, HttpClientAttribute httpClientAttr)
+        private void ForEachMethod(StringBuilder builder, GeneratorExecutionContext context, InterfaceDeclarationSyntax interfaceDeclaration, string attrName, HttpClientAttribute httpClientAttr)
         {
             var methodSyntaxs = interfaceDeclaration.Members.OfType<MethodDeclarationSyntax>();
-            foreach(var methodSyntax in methodSyntaxs)
+            foreach (var methodSyntax in methodSyntaxs)
             {
                 var methodSymbol = context.Compilation.GetSemanticModel(methodSyntax.SyntaxTree).GetDeclaredSymbol(methodSyntax) as IMethodSymbol;
-                if(methodSymbol == null)
+                if (methodSymbol == null)
                 {
                     continue;
                 }
                 var httpAttr = GetHttpMethod(methodSymbol);
-                if(httpAttr == null)
+                if (httpAttr == null)
                 {
                     continue;
                 }
-                GenerateClassMethod(builder,methodSymbol, httpAttr, httpClientAttr);
+                GenerateClassMethod(builder, methodSymbol, httpAttr, httpClientAttr);
             }
         }
 
@@ -546,9 +533,13 @@ namespace Easy.HttpClient.Generators
             builder.AppendLine("using System.Dynamic;");
             builder.AppendLine("using System.Text;");
             builder.AppendLine("using Easy.HttpClient.Util;");
+            builder.AppendLine("using Microsoft.AspNetCore.Http;");
+            builder.AppendLine("using System.Net.Http.Headers;");
+            builder.AppendLine("using Microsoft.AspNetCore.WebUtilities;");
+            builder.AppendLine("using System.Net;");
         }
 
-        private void GenerateClassHeader(StringBuilder builder,string namespaceStr,string interfaceName)
+        private void GenerateClassHeader(StringBuilder builder, string namespaceStr, string interfaceName)
         {
             builder.AppendLine($"namespace {namespaceStr}");
             builder.AppendLine("{");
@@ -560,14 +551,14 @@ namespace Easy.HttpClient.Generators
             builder.AppendLine("    }");
             builder.AppendLine("}");
         }
-        private Dictionary<string, string> ForEachInterface(GeneratorExecutionContext context, IEnumerable<InterfaceDeclarationSyntax> interfaceSyntaxs,string attrName)
+        private Dictionary<string, string> ForEachInterface(GeneratorExecutionContext context, IEnumerable<InterfaceDeclarationSyntax> interfaceSyntaxs, string attrName)
         {
             Dictionary<string, string> interfaceDict = new Dictionary<string, string>();
             foreach (var interfaceDeclaration in interfaceSyntaxs)
             {
                 var interfaceName = interfaceDeclaration.Identifier.ValueText;
-                var httpClientAttrSyntax = interfaceDeclaration.AttributeLists.SelectMany(x => x.Attributes).FirstOrDefault(attr=>$"{attr.Name.ToFullString()}Attribute" == attrName);
-                if(httpClientAttrSyntax == null)
+                var httpClientAttrSyntax = interfaceDeclaration.AttributeLists.SelectMany(x => x.Attributes).FirstOrDefault(attr => $"{attr.Name.ToFullString()}Attribute" == attrName);
+                if (httpClientAttrSyntax == null)
                 {
                     continue;
                 }
@@ -579,7 +570,7 @@ namespace Easy.HttpClient.Generators
                 StringBuilder builder = new StringBuilder();
                 GenerateNamespace(builder);
                 GenerateClassHeader(builder, namespaceStr, interfaceName);
-                ForEachMethod(builder,context, interfaceDeclaration, attrName, httpClientAttr);
+                ForEachMethod(builder, context, interfaceDeclaration, attrName, httpClientAttr);
                 GenerateClassFooter(builder);
                 context.AddSource($"{interfaceName}{CLASS_SUFFIX}.g.cs", builder.ToString());
                 interfaceDict.Add(interfaceName, namespaceStr);
@@ -609,7 +600,8 @@ namespace Easy.HttpClient.Generators
                 var names = namespaceName.Split('.');
                 names = names.Select(x => x[0].ToString().ToUpper() + x.Substring(1)).ToArray();
                 namespaceName = string.Join("", names);
-            }catch(Exception ex)
+            }
+            catch (Exception ex)
             {
                 namespaceName = null;
             }
@@ -652,7 +644,7 @@ namespace Easy.HttpClient.Generators
             fileBuilder.Append(injectBuilder.ToString());
             fileBuilder.AppendLine($"        }}");
             //添加多项目使用方法
-            if (mainModuleName!=null)
+            if (mainModuleName != null)
             {
                 fileBuilder.AppendLine($"        public static void AddEasyHttpClientBy{mainModuleName}(this IServiceCollection services)");
                 fileBuilder.AppendLine($"        {{");
@@ -670,27 +662,23 @@ namespace Easy.HttpClient.Generators
             builder.AppendLine("using System.Collections.Generic;");
             builder.AppendLine("using System.Reflection;");
             builder.AppendLine("using Newtonsoft.Json;");
+            builder.AppendLine("using Easy.HttpClient.Util;"); 
+            builder.AppendLine("using Microsoft.AspNetCore.Http;"); 
+            builder.AppendLine("using System.Net.Http.Headers;"); 
             builder.AppendLine("namespace Easy.HttpClient.Util");
             builder.AppendLine("{");
             builder.AppendLine("    public static class ObjectUtil");
             builder.AppendLine("    {");
-            builder.AppendLine("        public static Dictionary<string,string?> MapToDictory(object obj)");
+            builder.AppendLine("        public static Dictionary<string,object?> MapToDictory(object obj)");
             builder.AppendLine("        {");
             builder.AppendLine("            var type = obj.GetType();");
             builder.AppendLine("            PropertyInfo[] properties = type.GetProperties(BindingFlags.Instance | BindingFlags.Public);");
-            builder.AppendLine("            Dictionary<string, string?> dict = new Dictionary<string, string?>();");
+            builder.AppendLine("            Dictionary<string, object?> dict = new Dictionary<string, object?>();");
             builder.AppendLine("            foreach (PropertyInfo property in properties)");
             builder.AppendLine("            {");
             builder.AppendLine("                string propertyName = property.Name;");
             builder.AppendLine("                object propertyValue = property.GetValue(obj);");
-            builder.AppendLine("                if (property.PropertyType.IsValueType)");
-            builder.AppendLine("                {");
-            builder.AppendLine("                    dict.Add(propertyName, propertyValue?.ToString());");
-            builder.AppendLine("                }");
-            builder.AppendLine("                else");
-            builder.AppendLine("                {");
-            builder.AppendLine("                    dict.Add(propertyName, JsonConvert.SerializeObject(propertyValue));");
-            builder.AppendLine("                }");
+            builder.AppendLine("                dict.Add(propertyName, propertyValue);");
             builder.AppendLine("            }");
             builder.AppendLine("            return dict;");
             builder.AppendLine("        }");
@@ -707,7 +695,8 @@ namespace Easy.HttpClient.Generators
             var httpClentName = typeof(HttpClientAttribute).Name;
             //从语法树中查找出含有HttpClientAttribute的接口
             var interfaceSyntaxs = context.Compilation.SyntaxTrees.SelectMany(tree => tree.GetRoot().DescendantNodes().OfType<InterfaceDeclarationSyntax>());
-            interfaceSyntaxs = interfaceSyntaxs.Where(interfaceeclaration => {
+            interfaceSyntaxs = interfaceSyntaxs.Where(interfaceeclaration =>
+            {
                 return interfaceeclaration.AttributeLists.Any(list =>
                     list.Attributes.Any(attr =>
                         $"{attr.Name.ToFullString()}Attribute" == httpClentName
@@ -715,7 +704,7 @@ namespace Easy.HttpClient.Generators
                 );
             });
             GenerateUtilsExtensions(context);
-            var interfaceDict = ForEachInterface(context,interfaceSyntaxs, httpClentName);
+            var interfaceDict = ForEachInterface(context, interfaceSyntaxs, httpClentName);
             GenerateInjectionExtensions(context, interfaceDict);
         }
 
